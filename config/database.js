@@ -26,32 +26,38 @@
 
 
 
-
 const { Sequelize } = require('sequelize');
-// Note: On Railway, you don't strictly need dotenv as Railway injects vars directly,
-// but keeping it won't hurt as long as your .env is ignored by git.
 require('dotenv').config();
 
 const sequelize = new Sequelize(
-  process.env.MYSQLDATABASE, // Changed from DB_NAME
-  process.env.MYSQLUSER,     // Changed from DB_USER
-  process.env.MYSQLPASSWORD, // Changed from DB_PASSWORD
+  process.env.MYSQLDATABASE, 
+  process.env.MYSQLUSER,     
+  process.env.MYSQLPASSWORD, 
   {
-    host: process.env.MYSQLHOST, // Changed from DB_HOST
+    host: process.env.MYSQLHOST, 
     port: process.env.MYSQLPORT || 3306,
     dialect: 'mysql',
-    dialectModule: require('mysql2'), // Good practice to keep this for deployment
+    dialectModule: require('mysql2'), 
     logging: false,
+    dialectOptions: {
+      connectTimeout: 60000 // Gives Railway extra time to establish the link
+    },
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 60000,
+      idle: 10000
+    }
   }
 );
 
 // Test the connection
 sequelize.authenticate()
   .then(() => {
-    console.log('✅ Railway MySQL connection established successfully.');
+    console.log('✅ Connected to Railway MySQL via Public Proxy!');
   })
   .catch(err => {
-    console.error('❌ Unable to connect to the database:', err);
+    console.error('❌ Connection still failing:', err);
   });
 
 module.exports = sequelize;
