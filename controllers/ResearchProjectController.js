@@ -109,3 +109,57 @@ exports.getProjectByStudentId = async (req, res) => {
     res.status(500).json({ message: "Server error.", error: error.message });
   }
 };
+
+
+
+
+
+// @desc   Delete Research Project by ID
+// @route  DELETE /api/research-projects/:id
+exports.deleteResearchProject = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find project by ID
+    const project = await ResearchProject.findByPk(id);
+
+    if (!project) {
+      return res.status(404).json({ message: "Research project not found." });
+    }
+
+    const studentId = project.studentId;
+
+    // Delete the project
+    await project.destroy();
+
+    // Fetch remaining projects of this student
+    const remainingProjects = await ResearchProject.findAll({
+      where: { studentId },
+      order: [['id', 'ASC']], // Keep consistent order
+    });
+
+    // Reassign semesters in ascending order (1, 2, 3...)
+    for (let i = 0; i < remainingProjects.length; i++) {
+      await remainingProjects[i].update({
+        semester: String(i + 1),
+      });
+    }
+
+    res.status(200).json({
+      message: "Research project deleted and semesters reassigned successfully.",
+      data: {
+        deletedId: id,
+        remainingProjects: remainingProjects.map(p => ({
+          id: p.id,
+          semester: p.semester,
+          areaOfStudy: p.areaOfStudy,
+          type: p.type,
+          projectTitle: p.projectTitle,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting research project:", error);
+    res.status(500).json({ message: "Server error.", error: error.message });
+  }
+};

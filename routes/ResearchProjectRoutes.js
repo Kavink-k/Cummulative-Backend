@@ -4,7 +4,8 @@ const {
     createResearchProject,
     getAllProjects,
     getProjectById,
-    getProjectByStudentId
+    getProjectByStudentId,
+    deleteResearchProject
 } = require("../controllers/ResearchProjectController");
 
 // GET → Get all Research Projects
@@ -18,5 +19,7 @@ router.get("/:id", getProjectById);
 
 // POST → Save Research Project form
 router.post("/", createResearchProject);
+
+router.delete("/:id",deleteResearchProject);
 
 module.exports = router;
