@@ -38,7 +38,7 @@ app.use("/api/verifications", verificationRoutes);
 app.use("/api/bulk-upload", bulkUploadRoutes);
 app.use("/api/users", userRoutes);
 
-db.sequelize.sync({ alter: true }).then(() => {
+db.sequelize.sync({ force: true }).then(() => {
   console.log("Database synced successfully");
   app.listen(5000, () => console.log("Server running on port 5000"));
 });
