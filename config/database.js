@@ -30,7 +30,7 @@ const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
 const sequelize = new Sequelize(
-  process.env.MYSQLDATABASE, 
+  process.env.MYSQL_DATABASE, 
   process.env.MYSQLUSER,     
   process.env.MYSQLPASSWORD, 
   {
