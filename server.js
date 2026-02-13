@@ -40,7 +40,7 @@ app.use("/api/verifications", verificationRoutes);
 app.use("/api/bulk-upload", bulkUploadRoutes);
 app.use("/api/users", userRoutes);
 
-db.sequelize.sync({ force: true }).then(async () => {
+db.sequelize.sync({ alter: true }).then(async () => {
   try {
     // Manually fix the role ENUM for MySQL if alter failed
     await db.sequelize.query("ALTER TABLE users MODIFY COLUMN role ENUM('user', 'admin', 'principal') NOT NULL DEFAULT 'user'");
