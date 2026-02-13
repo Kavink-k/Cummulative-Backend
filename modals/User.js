@@ -38,11 +38,11 @@ module.exports = (sequelize, DataTypes) => {
                 },
                 onDelete: 'RESTRICT',
                 onUpdate: 'CASCADE',
-                validate: {
-                    notEmpty: {
-                        msg: "Institution is required"
-                    }
-                }
+                // validate: {
+                //     notEmpty: {
+                //         msg: "Institution is required"
+                //     }
+                // }
             },
 
             email: {
