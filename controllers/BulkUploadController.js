@@ -407,6 +407,9 @@ const bulkUploadExcel = async (req, res) => {
         emisNo: clean(r.emisNo) || "Null",
         mediumOfInstruction: clean(r.mediumOfInstruction_personal) || clean(r.mediumOfInstruction_hsc) || "Null",
         photoUrl: clean(r.photoUrl) || null,
+        approvalStatus: 'PENDING',
+        createdBy: req.user ? req.user.id : null,
+        institutionId: req.user ? req.user.institutionId : null,
       }).catch(err => console.warn("PersonalProfile warning:", err.message));
 
       // === 2. Admission Details ===
@@ -421,8 +424,8 @@ const bulkUploadExcel = async (req, res) => {
         eligibilityCertificateNo: clean(r.eligibilityCertificateNo) || "Null",
         eligibilityCertificateDate: parseDate(r.eligibilityCertificateDate),
         allotmentCategory: clean(r.allotmentCategory) || "Null",
-        govtAllotmentNo: clean(r.govtAllotmentNo) || "Null",
-        privateAllotmentNo: clean(r.privateAllotmentNo) || "Null",
+        allotmentNo: clean(r.allotmentNo) || clean(r.govtAllotmentNo) || clean(r.privateAllotmentNo) || "Null",
+        allotmentDate: parseDate(r.allotmentDate) || parseDate(r.govtAllotmentDate) || parseDate(r.privateAllotmentDate),
         communityCertificateNo: clean(r.communityCertificateNo) || "Null",
         communityCertificateDate: parseDate(r.communityCertificateDate),
         nativityCertificateNo: clean(r.nativityCertificateNo) || "Null",

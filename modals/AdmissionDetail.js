@@ -46,12 +46,12 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false,
     },
-    govtAllotmentNo: {
+    allotmentNo: {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    privateAllotmentNo: {
-      type: DataTypes.STRING,
+    allotmentDate: {
+      type: DataTypes.DATE,
       allowNull: true,
     },
     communityCertificateNo: {

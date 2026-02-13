@@ -15,10 +15,18 @@ db.ClinicalExperience = require("./ClinicalExperience")(sequelize, Sequelize);
 db.CourseCompletion = require("./CourseCompletion")(sequelize, Sequelize);
 db.CourseInstruction = require("./CourseInstruction")(sequelize, Sequelize);
 db.EducationalQualification = require("./EducationalQualification")(sequelize, Sequelize);
+db.InstitutionDetail = require("./InstitutionDetail")(sequelize, Sequelize);
 db.ObservationalVisit = require("./ObservationalVisit")(sequelize, Sequelize);
 db.PersonalProfile = require("./PersonalProfile")(sequelize, Sequelize);
 db.ResearchProject = require("./ResearchProject")(sequelize, Sequelize);
 db.Verification = require("./Verification")(sequelize, Sequelize);
 db.User = require("./User")(sequelize, Sequelize);
+
+// Setup associations
+Object.keys(db).forEach(modelName => {
+    if (db[modelName].associate) {
+        db[modelName].associate(db);
+    }
+});
 
 module.exports = db;

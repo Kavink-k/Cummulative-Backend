@@ -1,7 +1,7 @@
 
 
 
-const { PersonalProfile } = require("../modals");
+const { PersonalProfile, User, InstitutionDetail } = require("../modals");
 
 // @desc   Create or Update Personal Profile record
 // @route  POST /api/personal-profiles
@@ -9,6 +9,7 @@ exports.createPersonalProfile = async (req, res) => {
   try {
     const {
       studentId,
+      institutionId,
       studentName,
       age,
       gender,
@@ -44,8 +45,18 @@ exports.createPersonalProfile = async (req, res) => {
     if (existingProfile) {
       // --- UPDATE Existing Record ---
 
+      // Check edit permissions for mentors
+      if (req.user && req.user.role === 'user' && existingProfile.approvalStatus === 'APPROVED') {
+        if (existingProfile.editRequestStatus !== 'ALLOWED') {
+          return res.status(403).json({
+            message: "This record is approved and locked. Please request edit access from your Principal."
+          });
+        }
+      }
+
       // Prepare update object with all potential fields
       const potentialUpdates = {
+        institutionId: institutionId || existingProfile.institutionId,
         studentName,
         age,
         gender,
@@ -64,57 +75,42 @@ exports.createPersonalProfile = async (req, res) => {
         aadharNo,
         ociNumber,
         emisNo,
-        mediumOfInstruction
+        mediumOfInstruction,
+        editedBy: req.user ? req.user.id : existingProfile.editedBy,
+        editRequestStatus: 'NONE' // Reset request status after edit, but KEEP THE REASON for final approval review
       };
 
-      // Filter out undefined or null values to prevent overwriting existing data with blanks
+      // Filter out undefined or null values
       const finalUpdateData = {};
       Object.keys(potentialUpdates).forEach(key => {
         const value = potentialUpdates[key];
-        // Update if value is valid (not undefined/null). 
-        // Note: We allow empty strings if you assume the user cleared the field. 
-        // If you want to prevent clearing fields, add: && value !== ""
         if (value !== undefined && value !== null) {
           finalUpdateData[key] = value;
         }
       });
 
+      // Always reset to PENDING on update (re-approval required)
+      finalUpdateData.approvalStatus = 'PENDING';
+
       // Handle photo deletion/replacement
       const fs = require('fs');
       const path = require('path');
 
-      // If user is removing the photo (no new file and photoUrl field is empty string or explicitly null)
       if (!req.file && (req.body.photoUrl === '' || req.body.photoUrl === 'null' || req.body.photoUrl === null)) {
-        // Delete old photo file if it exists
         if (existingProfile.photoUrl) {
           const oldPhotoPath = path.join(__dirname, '..', existingProfile.photoUrl);
           if (fs.existsSync(oldPhotoPath)) {
-            try {
-              fs.unlinkSync(oldPhotoPath);
-              console.log('✅ Deleted old photo:', oldPhotoPath);
-            } catch (err) {
-              console.error('❌ Error deleting old photo:', err);
-            }
+            try { fs.unlinkSync(oldPhotoPath); } catch (err) { }
           }
         }
-        // Set photoUrl to null in database
         finalUpdateData.photoUrl = null;
-      }
-      // If user is uploading a new photo
-      else if (req.file && photoUrl) {
-        // Delete old photo file if it exists and is different from new one
+      } else if (req.file && photoUrl) {
         if (existingProfile.photoUrl && existingProfile.photoUrl !== photoUrl) {
           const oldPhotoPath = path.join(__dirname, '..', existingProfile.photoUrl);
           if (fs.existsSync(oldPhotoPath)) {
-            try {
-              fs.unlinkSync(oldPhotoPath);
-              console.log('✅ Deleted old photo:', oldPhotoPath);
-            } catch (err) {
-              console.error('❌ Error deleting old photo:', err);
-            }
+            try { fs.unlinkSync(oldPhotoPath); } catch (err) { }
           }
         }
-        // Set new photo URL
         finalUpdateData.photoUrl = photoUrl;
       }
 
@@ -128,7 +124,7 @@ exports.createPersonalProfile = async (req, res) => {
     } else {
       // --- CREATE New Record ---
 
-      // Validate strictly for creation (ensure all required fields are present)
+      // Validate strictly for creation
       if (
         !studentName || !age || !gender || !dateOfBirth || !nationality ||
         !religion || !community || !nativity || !maritalStatus ||
@@ -143,6 +139,7 @@ exports.createPersonalProfile = async (req, res) => {
 
       const newProfile = await PersonalProfile.create({
         studentId,
+        institutionId: institutionId || (req.user ? req.user.institutionId : null),
         studentName,
         age,
         gender,
@@ -163,6 +160,8 @@ exports.createPersonalProfile = async (req, res) => {
         emisNo,
         mediumOfInstruction,
         photoUrl,
+        createdBy: req.user ? req.user.id : null,
+        approvalStatus: 'PENDING'
       });
 
       return res.status(201).json({
@@ -190,7 +189,21 @@ exports.updatePersonalProfile = async (req, res) => {
       return res.status(404).json({ message: "Personal profile record not found." });
     }
 
-    const updateData = { ...req.body };
+    // Check edit permissions for mentors
+    if (req.user && req.user.role === 'user' && existingProfile.approvalStatus === 'APPROVED') {
+      if (existingProfile.editRequestStatus !== 'ALLOWED') {
+        return res.status(403).json({
+          message: "This record is approved and locked. Please request edit access from your Principal."
+        });
+      }
+    }
+
+    const updateData = {
+      ...req.body,
+      approvalStatus: 'PENDING',
+      editedBy: req.user ? req.user.id : existingProfile.editedBy,
+      editRequestStatus: 'NONE', // Reset request status after edit, but KEEP THE REASON for final approval review
+    };
     // Remove nulls/undefined
     Object.keys(updateData).forEach(key => (updateData[key] == null) && delete updateData[key]);
 
@@ -210,11 +223,31 @@ exports.updatePersonalProfile = async (req, res) => {
   }
 };
 
-// @desc   Get all Personal Profiles
+// @desc   Get all Personal Profiles (with filtering)
 // @route  GET /api/personal-profiles
 exports.getAllProfiles = async (req, res) => {
   try {
-    const profiles = await PersonalProfile.findAll();
+    const { institutionId, approvalStatus } = req.query;
+    const whereClause = {};
+
+    if (institutionId) {
+      whereClause.institutionId = institutionId;
+    }
+
+    if (approvalStatus) {
+      whereClause.approvalStatus = approvalStatus;
+    }
+
+    const profiles = await PersonalProfile.findAll({
+      where: whereClause,
+      include: [
+        { model: User, as: 'creator', attributes: ['name', 'designation'] },
+        { model: User, as: 'approver', attributes: ['name', 'designation'] },
+        { model: User, as: 'editor', attributes: ['name', 'designation'] },
+        { model: InstitutionDetail, as: 'institution', attributes: ['institutionName'] }
+      ]
+    });
+
     res.status(200).json({
       message: "Personal profiles retrieved successfully.",
       data: profiles,
@@ -224,6 +257,96 @@ exports.getAllProfiles = async (req, res) => {
     res.status(500).json({ message: "Server error.", error: error.message });
   }
 };
+
+// @desc   Approve Student profile
+// @route  PATCH /api/personal-profiles/approve/:studentId
+exports.approveStudent = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const profile = await PersonalProfile.findOne({ where: { studentId } });
+
+    if (!profile) {
+      return res.status(404).json({ message: "Personal profile not found." });
+    }
+
+    await profile.update({
+      approvalStatus: "APPROVED",
+      approvedBy: req.user ? req.user.id : null,
+      editRequestStatus: 'NONE',
+      editRequestReason: null // Finally clear it on approval
+    });
+
+    res.status(200).json({
+      message: "Student profile approved successfully.",
+      data: profile,
+    });
+  } catch (error) {
+    console.error("Error approving student profile:", error);
+    res.status(500).json({ message: "Server error.", error: error.message });
+  }
+};
+
+// @desc   Reject Student profile
+// @route  PATCH /api/personal-profiles/reject/:studentId
+exports.rejectStudent = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const profile = await PersonalProfile.findOne({ where: { studentId } });
+
+    if (!profile) {
+      return res.status(404).json({ message: "Personal profile not found." });
+    }
+
+    await profile.update({
+      approvalStatus: "REJECTED",
+      editRequestStatus: 'NONE',
+      editRequestReason: null // Clear on rejection
+    });
+
+    res.status(200).json({
+      message: "Student profile rejected successfully.",
+      data: profile,
+    });
+  } catch (error) {
+    console.error("Error rejecting student profile:", error);
+    res.status(500).json({ message: "Server error.", error: error.message });
+  }
+};
+
+// @desc   Request edit access (Mentors)
+// @route  PATCH /api/personal-profiles/request-edit/:studentId
+exports.requestEditAccess = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { reason } = req.body;
+    const profile = await PersonalProfile.findOne({ where: { studentId } });
+    if (!profile) return res.status(404).json({ message: "Profile not found" });
+
+    await profile.update({
+      editRequestStatus: 'REQUESTED',
+      editRequestReason: reason || "No reason provided"
+    });
+    res.json({ message: "Edit access requested successfully", data: profile });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to request edit", error: error.message });
+  }
+};
+
+// @desc   Allow edit access (Principals)
+// @route  PATCH /api/personal-profiles/allow-edit/:studentId
+exports.allowEditAccess = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const profile = await PersonalProfile.findOne({ where: { studentId } });
+    if (!profile) return res.status(404).json({ message: "Profile not found" });
+
+    await profile.update({ editRequestStatus: 'ALLOWED' });
+    res.json({ message: "Edit access granted successfully", data: profile });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to allow edit", error: error.message });
+  }
+};
+
 
 // @desc   Get Personal Profile by Primary Key ID
 // @route  GET /api/personal-profiles/:id
@@ -246,12 +369,18 @@ exports.getProfileById = async (req, res) => {
   }
 };
 
-// @desc   Get Personal Profile by Student ID
-// @route  GET /api/personal-profiles/student/:studentId
 exports.getProfileByStudentId = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const profile = await PersonalProfile.findOne({ where: { studentId } });
+    const profile = await PersonalProfile.findOne({
+      where: { studentId },
+      include: [
+        { model: User, as: 'creator', attributes: ['name', 'designation'] },
+        { model: User, as: 'approver', attributes: ['name', 'designation'] },
+        { model: User, as: 'editor', attributes: ['name', 'designation'] },
+        { model: InstitutionDetail, as: 'institution', attributes: ['institutionName'] }
+      ]
+    });
 
     if (!profile) {
       return res.status(404).json({ message: "Personal profile not found for this student ID." });

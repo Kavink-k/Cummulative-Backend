@@ -25,7 +25,7 @@ async function createAdminUser() {
         const admin = await User.create({
             name: 'System Administrator',
             designation: 'Administrator',
-            collegeName: 'Admin',
+            institutionId: 1, // Assuming institution with ID 1 exists (create it first if needed)
             email: 'admin@test.com',
             phone: '1234567890',
             password: hashedPassword,

@@ -16,6 +16,16 @@ module.exports = (sequelize, DataTypes) => {
         unique: true,
       },
 
+      // Link to institution
+      institutionId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'institution_details',
+          key: 'id'
+        }
+      },
+
       studentName: {
         type: DataTypes.STRING,
         allowNull: false,
@@ -114,12 +124,45 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING, // file path or URL
         allowNull: true,
       },
+      approvalStatus: {
+        type: DataTypes.ENUM("PENDING", "APPROVED", "REJECTED"),
+        defaultValue: "PENDING",
+        allowNull: false
+      },
+      createdBy: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      approvedBy: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      editedBy: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      editRequestStatus: {
+        type: DataTypes.ENUM("NONE", "REQUESTED", "ALLOWED"),
+        defaultValue: "NONE",
+        allowNull: false
+      },
+      editRequestReason: {
+        type: DataTypes.TEXT,
+        allowNull: true
+      },
     },
     {
       tableName: "personal_profiles",
       timestamps: true,
     }
   );
+
+  PersonalProfile.associate = (models) => {
+    PersonalProfile.belongsTo(models.User, { foreignKey: 'createdBy', as: 'creator' });
+    PersonalProfile.belongsTo(models.User, { foreignKey: 'approvedBy', as: 'approver' });
+    PersonalProfile.belongsTo(models.User, { foreignKey: 'editedBy', as: 'editor' });
+    PersonalProfile.belongsTo(models.InstitutionDetail, { foreignKey: 'institutionId', as: 'institution' });
+  };
 
   return PersonalProfile;
 };

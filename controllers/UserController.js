@@ -1,4 +1,4 @@
-const { User } = require("../modals");
+const { User, InstitutionDetail } = require("../modals");
 const bcrypt = require("bcrypt");
 const XLSX = require("xlsx");
 
@@ -6,13 +6,19 @@ const XLSX = require("xlsx");
 // @route  POST /api/users/register
 exports.registerUser = async (req, res) => {
     try {
-        const { name, designation, collegeName, email, phone, password } = req.body;
+        const { name, designation, institutionId, email, phone, password } = req.body;
 
         // Validate required fields
-        if (!name || !designation || !collegeName || !email || !phone || !password) {
+        if (!name || !designation || !institutionId || !email || !phone || !password) {
             return res.status(400).json({
-                message: "All fields are required (name, designation, collegeName, email, phone, password)"
+                message: "All fields are required (name, designation, institutionId, email, phone, password)"
             });
+        }
+
+        // Validate institution exists
+        const institution = await InstitutionDetail.findByPk(institutionId);
+        if (!institution) {
+            return res.status(400).json({ message: "Invalid institution ID" });
         }
 
         // Check if user already exists
@@ -31,7 +37,7 @@ exports.registerUser = async (req, res) => {
         const newUser = await User.create({
             name,
             designation,
-            collegeName,
+            institutionId,
             email,
             phone,
             password: hashedPassword,
@@ -39,17 +45,23 @@ exports.registerUser = async (req, res) => {
             isActive: true
         });
 
+        // Fetch user with institution data
+        const userWithInstitution = await User.findByPk(newUser.id, {
+            include: [{ model: InstitutionDetail, as: 'institution' }]
+        });
+
         // Remove password from response
         const userResponse = {
-            id: newUser.id,
-            name: newUser.name,
-            designation: newUser.designation,
-            collegeName: newUser.collegeName,
-            email: newUser.email,
-            phone: newUser.phone,
-            role: newUser.role,
-            isActive: newUser.isActive,
-            createdAt: newUser.createdAt
+            id: userWithInstitution.id,
+            name: userWithInstitution.name,
+            designation: userWithInstitution.designation,
+            institutionId: userWithInstitution.institutionId,
+            institution: userWithInstitution.institution,
+            email: userWithInstitution.email,
+            phone: userWithInstitution.phone,
+            role: userWithInstitution.role,
+            isActive: userWithInstitution.isActive,
+            createdAt: userWithInstitution.createdAt
         };
 
         return res.status(201).json({
@@ -79,8 +91,11 @@ exports.loginUser = async (req, res) => {
             });
         }
 
-        // Find user by email
-        const user = await User.findOne({ where: { email } });
+        // Find user by email with institution data
+        const user = await User.findOne({
+            where: { email },
+            include: [{ model: InstitutionDetail, as: 'institution' }]
+        });
         if (!user) {
             return res.status(401).json({
                 message: "Invalid email or password"
@@ -110,7 +125,8 @@ exports.loginUser = async (req, res) => {
             id: user.id,
             name: user.name,
             designation: user.designation,
-            collegeName: user.collegeName,
+            institutionId: user.institutionId,
+            institution: user.institution,
             email: user.email,
             phone: user.phone,
             role: user.role,
@@ -188,7 +204,7 @@ exports.getUserById = async (req, res) => {
 exports.updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, designation, collegeName, email, phone, password } = req.body;
+        const { name, designation, institutionId, email, phone, password } = req.body;
 
         const user = await User.findByPk(id);
         if (!user) {
@@ -201,7 +217,16 @@ exports.updateUser = async (req, res) => {
         const updateData = {};
         if (name) updateData.name = name;
         if (designation) updateData.designation = designation;
-        if (collegeName) updateData.collegeName = collegeName;
+
+        // Validate institution if provided
+        if (institutionId) {
+            const institution = await InstitutionDetail.findByPk(institutionId);
+            if (!institution) {
+                return res.status(400).json({ message: "Invalid institution ID" });
+            }
+            updateData.institutionId = institutionId;
+        }
+
         if (email) updateData.email = email;
         if (phone) updateData.phone = phone;
 
@@ -213,16 +238,22 @@ exports.updateUser = async (req, res) => {
 
         await user.update(updateData);
 
+        // Fetch updated user with institution data
+        const updatedUser = await User.findByPk(id, {
+            include: [{ model: InstitutionDetail, as: 'institution' }]
+        });
+
         // Remove password from response
         const userResponse = {
-            id: user.id,
-            name: user.name,
-            designation: user.designation,
-            collegeName: user.collegeName,
-            email: user.email,
-            phone: user.phone,
-            isActive: user.isActive,
-            updatedAt: user.updatedAt
+            id: updatedUser.id,
+            name: updatedUser.name,
+            designation: updatedUser.designation,
+            institutionId: updatedUser.institutionId,
+            institution: updatedUser.institution,
+            email: updatedUser.email,
+            phone: updatedUser.phone,
+            isActive: updatedUser.isActive,
+            role: updatedUser.role
         };
 
         res.status(200).json({
@@ -333,7 +364,7 @@ exports.getAllUsersForAdmin = async (req, res) => {
                     { name: { [require('sequelize').Op.like]: `%${search}%` } },
                     { email: { [require('sequelize').Op.like]: `%${search}%` } },
                     { designation: { [require('sequelize').Op.like]: `%${search}%` } },
-                    { collegeName: { [require('sequelize').Op.like]: `%${search}%` } }
+                    // { institutionName: { [require('sequelize').Op.like]: `%${search}%` } }
                 ]
             }
             : {};
@@ -370,13 +401,19 @@ exports.getAllUsersForAdmin = async (req, res) => {
 // @route  POST /api/users/admin/create
 exports.createUserByAdmin = async (req, res) => {
     try {
-        const { name, designation, collegeName, email, phone, password, role = 'user' } = req.body;
+        const { name, designation, institutionId, email, phone, password, role = 'user' } = req.body;
 
         // Validate required fields
-        if (!name || !designation || !collegeName || !email || !phone || !password) {
+        if (!name || !designation || !institutionId || !email || !phone || !password) {
             return res.status(400).json({
                 message: "All fields are required"
             });
+        }
+
+        // Validate institution exists
+        const institution = await InstitutionDetail.findByPk(institutionId);
+        if (!institution) {
+            return res.status(400).json({ message: "Invalid institution ID" });
         }
 
         // Check if user already exists
@@ -395,25 +432,31 @@ exports.createUserByAdmin = async (req, res) => {
         const newUser = await User.create({
             name,
             designation,
-            collegeName,
+            institutionId,
             email,
             phone,
             password: hashedPassword,
-            role: role, // Admin can set role
+            role,
             isActive: true
+        });
+
+        // Fetch user with institution data
+        const userWithInstitution = await User.findByPk(newUser.id, {
+            include: [{ model: InstitutionDetail, as: 'institution' }]
         });
 
         // Remove password from response
         const userResponse = {
-            id: newUser.id,
-            name: newUser.name,
-            designation: newUser.designation,
-            collegeName: newUser.collegeName,
-            email: newUser.email,
-            phone: newUser.phone,
-            role: newUser.role,
-            isActive: newUser.isActive,
-            createdAt: newUser.createdAt
+            id: userWithInstitution.id,
+            name: userWithInstitution.name,
+            designation: userWithInstitution.designation,
+            institutionId: userWithInstitution.institutionId,
+            institution: userWithInstitution.institution,
+            email: userWithInstitution.email,
+            phone: userWithInstitution.phone,
+            role: userWithInstitution.role,
+            isActive: userWithInstitution.isActive,
+            createdAt: userWithInstitution.createdAt
         };
 
         return res.status(201).json({
@@ -435,7 +478,7 @@ exports.createUserByAdmin = async (req, res) => {
 exports.updateUserByAdmin = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, designation, collegeName, email, phone, password, role, isActive } = req.body;
+        const { name, designation, institutionId, email, phone, password, role, isActive } = req.body;
 
         const user = await User.findByPk(id);
         if (!user) {
@@ -448,7 +491,16 @@ exports.updateUserByAdmin = async (req, res) => {
         const updateData = {};
         if (name) updateData.name = name;
         if (designation) updateData.designation = designation;
-        if (collegeName) updateData.collegeName = collegeName;
+
+        // Validate institution if provided
+        if (institutionId) {
+            const institution = await InstitutionDetail.findByPk(institutionId);
+            if (!institution) {
+                return res.status(400).json({ message: "Invalid institution ID" });
+            }
+            updateData.institutionId = institutionId;
+        }
+
         if (email) updateData.email = email;
         if (phone) updateData.phone = phone;
         if (role) updateData.role = role; // Admin can change role
@@ -467,7 +519,7 @@ exports.updateUserByAdmin = async (req, res) => {
             id: user.id,
             name: user.name,
             designation: user.designation,
-            collegeName: user.collegeName,
+            institutionId: user.institutionId,
             email: user.email,
             phone: user.phone,
             role: user.role,
@@ -523,7 +575,7 @@ exports.bulkUploadUsers = async (req, res) => {
 
             try {
                 // Validate required fields
-                if (!row.name || !row.designation || !row.collegeName || !row.email || !row.phone || !row.password) {
+                if (!row.name || !row.designation || !row.institutionName || !row.email || !row.phone || !row.password) {
                     results.errors.push({
                         row: rowNumber,
                         email: row.email || 'N/A',
@@ -551,7 +603,7 @@ exports.bulkUploadUsers = async (req, res) => {
                 const newUser = await User.create({
                     name: row.name,
                     designation: row.designation,
-                    collegeName: row.collegeName,
+                    institutionName: row.institutionName,
                     email: row.email,
                     phone: row.phone,
                     password: hashedPassword,
@@ -654,7 +706,8 @@ exports.getUserStats = async (req, res) => {
                 recentRegistrations,
                 usersByRole: {
                     admin: adminCount,
-                    user: userCount
+                    user: userCount,
+                    principal: await User.count({ where: { role: 'principal' } })
                 },
                 recentUsers
             }
@@ -680,7 +733,7 @@ exports.downloadTemplate = async (req, res) => {
             {
                 name: 'Dr. John Smith',
                 designation: 'Professor',
-                collegeName: 'ABC Medical College',
+                institutionName: 'ABC Medical College',
                 email: 'john.smith@example.com',
                 phone: '9876543210',
                 password: 'password123',
@@ -689,7 +742,7 @@ exports.downloadTemplate = async (req, res) => {
             {
                 name: 'Dr. Jane Doe',
                 designation: 'Associate Professor',
-                collegeName: 'XYZ College',
+                institutionName: 'XYZ College',
                 email: 'jane.doe@example.com',
                 phone: '9876543211',
                 password: 'password456',

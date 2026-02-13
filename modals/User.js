@@ -29,12 +29,18 @@ module.exports = (sequelize, DataTypes) => {
                 }
             },
 
-            collegeName: {
-                type: DataTypes.STRING,
+            institutionId: {
+                type: DataTypes.INTEGER,
                 allowNull: false,
+                references: {
+                    model: 'institution_details',
+                    key: 'id'
+                },
+                onDelete: 'RESTRICT',
+                onUpdate: 'CASCADE',
                 validate: {
                     notEmpty: {
-                        msg: "College Name is required"
+                        msg: "Institution is required"
                     }
                 }
             },
@@ -84,26 +90,35 @@ module.exports = (sequelize, DataTypes) => {
             },
 
             role: {
-                type: DataTypes.ENUM('user', 'admin'),
-                defaultValue: 'user',
-                allowNull: false,
+                type: DataTypes.ENUM("user", "admin", "principal"),
+                defaultValue: "user",
+                allowNull: false
             },
 
             isActive: {
                 type: DataTypes.BOOLEAN,
                 defaultValue: true,
+                allowNull: false
             },
 
             lastLogin: {
                 type: DataTypes.DATE,
-                allowNull: true,
+                allowNull: true
             }
         },
         {
             tableName: "users",
-            timestamps: true,
+            timestamps: true
         }
     );
+
+    // Define association
+    User.associate = (models) => {
+        User.belongsTo(models.InstitutionDetail, {
+            foreignKey: 'institutionId',
+            as: 'institution'
+        });
+    };
 
     return User;
 };
